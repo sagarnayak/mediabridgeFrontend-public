@@ -1,0 +1,54 @@
+name: Deploy Frontend
+
+# Trigger is set to manual only so this workflow does not run automatically.
+# To enable auto-deploy on push to main, replace the 'on' block below with:
+#
+#   on:
+#     push:
+#       branches:
+#         - main
+#
+# You will also need to set these secrets in your GitHub repo settings:
+#   VITE_API_URL               - the URL of your MediaBridge backend
+#   S3_BUCKET                  - your S3 bucket name
+#   AWS_ACCESS_KEY_ID          - AWS credentials with S3 write + CloudFront invalidation access
+#   AWS_SECRET_ACCESS_KEY      - AWS credentials
+#   CLOUDFRONT_DISTRIBUTION_ID - your CloudFront distribution ID
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Deploy to S3
+        run: aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }} --delete
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+
+      - name: Invalidate CloudFront
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
